@@ -1,0 +1,14 @@
+mask_project/
+├── mask_app/
+│   ├── models.py          # DB model
+│   ├── views.py           # API endpoints + page render
+│   ├── urls.py
+│   └── ml/
+│       ├── detector.py    # your detection logic (adapted)
+│       ├── mask_detector.pth
+│       └── face_detector/
+├── templates/
+│   └── index.html         # single page UI
+├── media/
+│   └── captures/          # saved face images
+└── manage.py

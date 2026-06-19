@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mask Detection Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0B0F14;
+    --panel:#141B23;
+    --panel-2:#0F151C;
+    --border:#232E3A;
+    --text:#E6EDF3;
+    --muted:#7D8A99;
+    --accent:#2DD4BF;
+    --mask:#4ADE80;
+    --no-mask:#F87171;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    line-height:1.5;
+    padding:32px 24px 80px;
+  }
+  .wrap{max-width:1180px; margin:0 auto;}
+
+  /* ── Header ───────────────────────────────────────── */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:28px; flex-wrap:wrap; gap:12px;
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:22px; font-weight:700; letter-spacing:-0.01em;
+  }
+  .brand .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px; color:var(--accent);
+    letter-spacing:0.12em; text-transform:uppercase;
+    margin-bottom:4px;
+  }
+  .live-dot{
+    width:9px; height:9px; border-radius:50%;
+    background:var(--muted);
+    box-shadow:0 0 0 0 rgba(125,138,153,0.5);
+  }
+  .live-dot.on{
+    background:var(--mask);
+    animation:pulse 1.6s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(74,222,128,0.55);}
+    70%{box-shadow:0 0 0 10px rgba(74,222,128,0);}
+    100%{box-shadow:0 0 0 0 rgba(74,222,128,0);}
+  }
+  .live-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px; color:var(--muted);
+    display:flex; align-items:center; gap:8px;
+  }
+
+  /* ── Live monitor ─────────────────────────────────── */
+  .monitor-wrap{ margin:0 auto 36px; max-width:980px; }
+
+  .monitor{
+    position:relative; background:var(--panel-2);
+    border:1px solid var(--border); border-radius:4px;
+    aspect-ratio:4/3; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .monitor video{
+    width:100%; height:100%; object-fit:cover;
+    transform:scaleX(-1); /* mirror */
+    display:none;
+  }
+  .monitor.active video{display:block;}
+  .monitor canvas#overlay{
+    position:absolute; top:0; left:0;
+    width:100%; height:100%;
+    display:none;
+    pointer-events:none;
+  }
+  .monitor.active canvas#overlay{display:block;}
+  .monitor-placeholder{
+    text-align:center; color:var(--muted);
+    font-family:'JetBrains Mono', monospace; font-size:13px;
+  }
+  .monitor.active .monitor-placeholder{display:none;}
+
+  /* small transparent status chip, bottom-left of the monitor */
+  .status-chip{
+    position:absolute; bottom:12px; left:12px;
+    display:none; align-items:center; gap:8px;
+    padding:6px 12px; border-radius:99px;
+    background:rgba(11,15,20,0.55);
+    backdrop-filter:blur(4px);
+    border:1px solid rgba(255,255,255,0.08);
+    font-family:'Space Grotesk', sans-serif;
+    font-size:14px; font-weight:600;
+    color:var(--muted); z-index:3;
+  }
+  .monitor.active .status-chip{display:flex;}
+  .status-chip.mask{color:var(--mask);}
+  .status-chip.no-mask{color:var(--no-mask);}
+  .status-chip .status-icon{
+    width:8px; height:8px; border-radius:50%;
+    background:currentColor; flex-shrink:0;
+  }
+  .status-chip .chip-conf{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px; color:rgba(255,255,255,0.6);
+    font-weight:500;
+  }
+
+  /* corner brackets — signature element */
+  .corner{
+    position:absolute; width:22px; height:22px;
+    border-color:var(--accent); opacity:0.7;
+  }
+  .corner.tl{top:10px; left:10px; border-top:2px solid; border-left:2px solid;}
+  .corner.tr{top:10px; right:10px; border-top:2px solid; border-right:2px solid;}
+  .corner.bl{bottom:10px; left:10px; border-bottom:2px solid; border-left:2px solid;}
+  .corner.br{bottom:10px; right:10px; border-bottom:2px solid; border-right:2px solid;}
+
+  .rec-tag{
+    position:absolute; top:14px; left:14px;
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    color:var(--no-mask); display:none; align-items:center; gap:6px;
+    letter-spacing:0.08em; z-index:2;
+  }
+  .monitor.active .rec-tag{display:flex;}
+  .rec-tag .dot{
+    width:8px; height:8px; border-radius:50%; background:var(--no-mask);
+    animation:pulse-red 1.4s infinite;
+  }
+  @keyframes pulse-red{
+    0%{box-shadow:0 0 0 0 rgba(248,113,113,0.55);}
+    70%{box-shadow:0 0 0 8px rgba(248,113,113,0);}
+    100%{box-shadow:0 0 0 0 rgba(248,113,113,0);}
+  }
+
+  .monitor-controls{
+    display:flex; justify-content:center; gap:10px; margin-top:14px;
+  }
+  button{
+    font-family:'Inter', sans-serif; font-size:13px; font-weight:600;
+    padding:10px 18px; border-radius:4px; border:1px solid var(--border);
+    background:var(--panel); color:var(--text); cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  button:hover{border-color:var(--accent);}
+  button.primary{background:var(--accent); color:#08121A; border-color:var(--accent);}
+  button.primary:hover{opacity:0.9;}
+  button:disabled{opacity:0.4; cursor:not-allowed;}
+  button.primary:disabled{background:var(--panel); color:var(--muted); border-color:var(--border);}
+
+  /* ── Section heading ──────────────────────────────── */
+  .section-head{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom:16px; flex-wrap:wrap; gap:10px;
+  }
+  .section-head h2{
+    font-family:'Space Grotesk', sans-serif; font-size:18px; font-weight:600;
+  }
+  .section-head .eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    color:var(--accent); letter-spacing:0.12em; text-transform:uppercase;
+    display:block; margin-bottom:4px;
+  }
+  .section-actions{ display:flex; gap:10px; }
+
+  /* ── Stat cards ───────────────────────────────────── */
+  .stats-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:14px;
+    margin-bottom:24px;
+  }
+  @media(max-width:760px){ .stats-grid{grid-template-columns:repeat(2,1fr);} }
+  .stat-card{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:4px; padding:18px;
+  }
+  .stat-card .label{
+    font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--muted);
+    letter-spacing:0.08em; text-transform:uppercase; margin-bottom:8px;
+  }
+  .stat-card .value{
+    font-family:'Space Grotesk', sans-serif; font-size:28px; font-weight:700;
+  }
+  .stat-card .value.mask{color:var(--mask);}
+  .stat-card .value.no-mask{color:var(--no-mask);}
+
+  /* ── Chart ────────────────────────────────────────── */
+  .chart-panel{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:4px; padding:20px; margin-bottom:24px;
+    height:280px;
+  }
+
+  /* ── Table ────────────────────────────────────────── */
+  .table-panel{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:4px; overflow:hidden;
+  }
+  table{width:100%; border-collapse:collapse;}
+  th, td{
+    padding:12px 16px; text-align:left;
+    border-bottom:1px solid var(--border);
+    font-size:13px;
+  }
+  th{
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    color:var(--muted); letter-spacing:0.08em; text-transform:uppercase;
+    background:var(--panel-2);
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--panel-2);}
+  td.mono{font-family:'JetBrains Mono', monospace; color:var(--muted); font-size:12px;}
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 10px; border-radius:99px; font-size:12px; font-weight:600;
+    font-family:'JetBrains Mono', monospace;
+  }
+  .badge.mask{background:rgba(74,222,128,0.12); color:var(--mask);}
+  .badge.no-mask{background:rgba(248,113,113,0.12); color:var(--no-mask);}
+  .badge .dot{width:6px; height:6px; border-radius:50%; background:currentColor;}
+  .thumb{
+    width:44px; height:44px; border-radius:4px; object-fit:cover;
+    border:1px solid var(--border); display:block;
+  }
+  .thumb-placeholder{
+    width:44px; height:44px; border-radius:4px;
+    border:1px solid var(--border); background:var(--panel-2);
+  }
+  .empty-row td{
+    text-align:center; color:var(--muted); padding:32px;
+    font-family:'JetBrains Mono', monospace; font-size:12px;
+  }
+
+  /* ── Manage modal ─────────────────────────────────── */
+  .modal-backdrop{
+    display:none; position:fixed; inset:0;
+    background:rgba(5,8,11,0.7);
+    backdrop-filter:blur(2px);
+    align-items:center; justify-content:center;
+    z-index:50; padding:20px;
+  }
+  .modal-backdrop.open{display:flex;}
+  .modal{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:6px; width:100%; max-width:640px;
+    max-height:80vh; display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .modal-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 24px; border-bottom:1px solid var(--border);
+  }
+  .modal-head h2{
+    font-family:'Space Grotesk', sans-serif; font-size:17px; font-weight:600;
+  }
+  .modal-close{
+    background:transparent; border:none; color:var(--muted);
+    font-size:22px; line-height:1; padding:4px 8px; cursor:pointer;
+  }
+  .modal-close:hover{color:var(--text);}
+  .modal-toolbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 24px; border-bottom:1px solid var(--border);
+    flex-wrap:wrap; gap:10px;
+  }
+  .select-all-label{
+    display:flex; align-items:center; gap:8px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--muted);
+    cursor:pointer;
+  }
+  .modal-toolbar-actions{ display:flex; gap:8px; }
+  button.danger{ border-color:rgba(248,113,113,0.4); color:var(--no-mask); }
+  button.danger:hover{ border-color:var(--no-mask); }
+  button.danger:disabled{ color:var(--muted); border-color:var(--border); }
+
+  .modal-list{
+    overflow-y:auto; padding:8px 12px; flex:1;
+  }
+  .modal-row{
+    display:flex; align-items:center; gap:12px;
+    padding:10px 12px; border-radius:4px;
+  }
+  .modal-row:hover{ background:var(--panel-2); }
+  .modal-row .row-thumb{
+    width:40px; height:40px; border-radius:4px; object-fit:cover;
+    border:1px solid var(--border); flex-shrink:0;
+  }
+  .modal-row .row-meta{
+    flex:1; display:flex; flex-direction:column; gap:2px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--muted);
+  }
+  .modal-row .row-status{
+    font-family:'Inter', sans-serif; font-size:13px; font-weight:600;
+  }
+  .modal-row .row-status.mask{ color:var(--mask); }
+  .modal-row .row-status.no-mask{ color:var(--no-mask); }
+  .modal-empty{
+    text-align:center; color:var(--muted); padding:32px;
+    font-family:'JetBrains Mono', monospace; font-size:12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div>
+        <div class="eyebrow">Live Monitoring</div>
+        <h1>Mask Detection Console</h1>
+      </div>
+    </div>
+    <div class="live-label">
+      <span class="live-dot" id="liveDot"></span>
+      <span id="liveLabel">Camera offline</span>
+    </div>
+  </header>
+
+  <!-- ── Live monitor + status ───────────────────────── -->
+  <div class="monitor-wrap">
+    <div class="monitor" id="monitor">
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+      <div class="rec-tag"><span class="dot"></span> ANALYZING</div>
+      <div class="monitor-placeholder">CAMERA FEED OFFLINE<br>Press "Start camera" to begin</div>
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="status-chip idle" id="statusChip">
+        <span class="status-icon"></span>
+        <span id="statusText">Awaiting camera</span>
+        <span class="chip-conf" id="confValue"></span>
+      </div>
+    </div>
+    <div class="monitor-controls">
+      <button class="primary" id="startBtn">Start camera</button>
+      <button id="stopBtn" disabled>Stop camera</button>
+    </div>
+  </div>
+
+  <!-- ── Dashboard ────────────────────────────────────── -->
+  <div class="section-head">
+    <div>
+      <span class="eyebrow">History &amp; Trends</span>
+      <h2>Detection Dashboard</h2>
+    </div>
+    <div class="section-actions">
+      <button id="manageBtn">Manage</button>
+      <button id="refreshBtn">Refresh data</button>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="label">Total Logged Changes</div>
+      <div class="value" id="statTotal">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Mask Detected</div>
+      <div class="value mask" id="statMask">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">No Mask Detected</div>
+      <div class="value no-mask" id="statNoMask">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Mask Compliance</div>
+      <div class="value" id="statPct">0%</div>
+    </div>
+  </div>
+
+  <div class="chart-panel">
+    <canvas id="trendChart"></canvas>
+  </div>
+
+  <div class="table-panel">
+    <table>
+      <thead>
+        <tr>
+          <th>Snapshot</th>
+          <th>Status</th>
+          <th>Confidence</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody id="logsBody">
+        <tr class="empty-row"><td colspan="4">No detection logs yet</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ── Manage snapshots modal ─────────────────────────── -->
+<div class="modal-backdrop" id="manageModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <span class="eyebrow">Snapshot Records</span>
+        <h2>Manage Detection Logs</h2>
+      </div>
+      <button class="modal-close" id="modalCloseBtn">&times;</button>
+    </div>
+
+    <div class="modal-toolbar">
+      <label class="select-all-label">
+        <input type="checkbox" id="selectAllCheckbox">
+        Select all
+      </label>
+      <div class="modal-toolbar-actions">
+        <button id="exportBtn">Export to Excel</button>
+        <button class="danger" id="deleteSelectedBtn" disabled>Delete selected</button>
+      </div>
+    </div>
+
+    <div class="modal-list" id="modalList">
+      <div class="empty-row"><p>Loading…</p></div>
+    </div>
+  </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script>
+const video       = document.getElementById('video');
+const overlay     = document.getElementById('overlay');
+const monitor     = document.getElementById('monitor');
+const startBtn    = document.getElementById('startBtn');
+const stopBtn     = document.getElementById('stopBtn');
+const liveDot     = document.getElementById('liveDot');
+const liveLabel   = document.getElementById('liveLabel');
+const captureCanvas = document.getElementById('captureCanvas');
+
+const statusChip  = document.getElementById('statusChip');
+const statusText  = document.getElementById('statusText');
+const confValue   = document.getElementById('confValue');
+
+const manageBtn        = document.getElementById('manageBtn');
+const manageModal       = document.getElementById('manageModal');
+const modalCloseBtn     = document.getElementById('modalCloseBtn');
+const modalList          = document.getElementById('modalList');
+const selectAllCheckbox  = document.getElementById('selectAllCheckbox');
+const exportBtn          = document.getElementById('exportBtn');
+const deleteSelectedBtn  = document.getElementById('deleteSelectedBtn');
+
+let allLogsCache = [];
+
+let stream = null;
+let detectInterval = null;
+const DETECT_INTERVAL_MS = 3000;
+
+// ── Camera control ────────────────────────────────────
+startBtn.addEventListener('click', async () => {
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width:640, height:480 } });
+    video.srcObject = stream;
+
+    video.addEventListener('loadedmetadata', () => {
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
+    }, { once:true });
+
+    monitor.classList.add('active');
+    liveDot.classList.add('on');
+    liveLabel.textContent = 'Camera live';
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+
+    statusChip.className = 'status-chip idle';
+    statusText.textContent = 'Scanning…';
+
+    detectInterval = setInterval(captureAndDetect, DETECT_INTERVAL_MS);
+    captureAndDetect(); // run immediately
+  }catch(err){
+    alert('Could not access camera: ' + err.message);
+  }
+});
+
+stopBtn.addEventListener('click', () => {
+  if(stream){
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  if(detectInterval){
+    clearInterval(detectInterval);
+    detectInterval = null;
+  }
+  video.srcObject = null;
+  monitor.classList.remove('active');
+  liveDot.classList.remove('on');
+  liveLabel.textContent = 'Camera offline';
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+
+  const octx = overlay.getContext('2d');
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+
+  statusChip.className = 'status-chip idle';
+  statusText.textContent = 'Awaiting camera';
+  confValue.textContent = '';
+});
+
+// ── Capture frame + send to backend ───────────────────
+async function captureAndDetect(){
+  if(!stream) return;
+
+  captureCanvas.width = video.videoWidth;
+  captureCanvas.height = video.videoHeight;
+  const ctx = captureCanvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+  const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.8);
+
+  try{
+    const res = await fetch('/api/detect/', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ image: dataUrl })
+    });
+    const result = await res.json();
+    updateStatus(result);
+    drawBoxOverlay(result);
+
+    if(result.saved){
+      loadDashboard();
+    }
+  }catch(err){
+    console.error('Detection request failed:', err);
+  }
+}
+
+function updateStatus(result){
+  if(!result.face_detected){
+    statusChip.className = 'status-chip idle';
+    statusText.textContent = 'No face detected';
+    confValue.textContent = '';
+    return;
+  }
+
+  if(result.mask){
+    statusChip.className = 'status-chip mask';
+    statusText.textContent = 'Mask';
+  }else{
+    statusChip.className = 'status-chip no-mask';
+    statusText.textContent = 'No Mask';
+  }
+  confValue.textContent = (result.confidence * 100).toFixed(1) + '%';
+}
+
+// ── Draw bounding box + label on the overlay canvas ───
+function drawBoxOverlay(result){
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+  if(!result.face_detected || !result.box) return;
+
+  const { x1, y1, x2, y2 } = result.box;
+  const color = result.mask ? '#4ADE80' : '#F87171';
+  const label = result.mask ? 'Mask' : 'No Mask';
+
+  // The video is mirrored (scaleX(-1) in CSS), so flip the box
+  // horizontally to match what the user visually sees.
+  const fw = result.frame_width;
+  const flippedX1 = fw - x2;
+  const flippedX2 = fw - x1;
+
+  const boxWidth = flippedX2 - flippedX1;
+  const boxHeight = y2 - y1;
+
+  ctx.lineWidth = Math.max(2, overlay.width * 0.004);
+  ctx.strokeStyle = color;
+  ctx.strokeRect(flippedX1, y1, boxWidth, boxHeight);
+
+  // label background + text, positioned just above the box
+  ctx.font = `${Math.max(16, overlay.width * 0.03)}px 'Space Grotesk', sans-serif`;
+  const textMetrics = ctx.measureText(label);
+  const padding = 6;
+  const labelHeight = parseInt(ctx.font, 10) + padding * 2;
+  const labelY = Math.max(0, y1 - labelHeight);
+
+  ctx.fillStyle = color;
+  ctx.fillRect(flippedX1, labelY, textMetrics.width + padding * 2, labelHeight);
+
+  ctx.fillStyle = '#08121A';
+  ctx.fillText(label, flippedX1 + padding, labelY + labelHeight - padding * 1.5);
+}
+
+// ── Dashboard: stats + chart + table ──────────────────
+let trendChart = null;
+
+async function loadDashboard(){
+  try{
+    const [statsRes, logsRes] = await Promise.all([
+      fetch('/api/stats/'),
+      fetch('/api/logs/')
+    ]);
+    const stats = await statsRes.json();
+    const logs  = await logsRes.json();
+
+    renderStats(stats);
+    renderChart(stats);
+    renderTable(logs.logs);
+  }catch(err){
+    console.error('Failed to load dashboard:', err);
+  }
+}
+
+function renderStats(stats){
+  document.getElementById('statTotal').textContent = stats.total;
+  document.getElementById('statMask').textContent = stats.mask_count;
+  document.getElementById('statNoMask').textContent = stats.no_mask_count;
+  document.getElementById('statPct').textContent = stats.mask_pct + '%';
+}
+
+function renderChart(stats){
+  const labels = stats.daily.map(d => d.date);
+  const maskData = stats.daily.map(d => d.mask);
+  const noMaskData = stats.daily.map(d => d.no_mask);
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+
+  if(trendChart){
+    trendChart.data.labels = labels;
+    trendChart.data.datasets[0].data = maskData;
+    trendChart.data.datasets[1].data = noMaskData;
+    trendChart.update();
+    return;
+  }
+
+  trendChart = new Chart(ctx, {
+    type: 'bar',
+    data:{
+      labels: labels,
+      datasets:[
+        {
+          label:'Mask',
+          data: maskData,
+          backgroundColor:'#4ADE80',
+          borderRadius:3,
+        },
+        {
+          label:'No Mask',
+          data: noMaskData,
+          backgroundColor:'#F87171',
+          borderRadius:3,
+        }
+      ]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{
+          labels:{ color:'#E6EDF3', font:{ family:'Inter', size:12 } }
+        }
+      },
+      scales:{
+        x:{
+          ticks:{ color:'#7D8A99', font:{ family:'JetBrains Mono', size:11 } },
+          grid:{ color:'#232E3A' }
+        },
+        y:{
+          beginAtZero:true,
+          ticks:{ color:'#7D8A99', font:{ family:'JetBrains Mono', size:11 }, precision:0 },
+          grid:{ color:'#232E3A' }
+        }
+      }
+    }
+  });
+}
+
+function renderTable(logs){
+  const tbody = document.getElementById('logsBody');
+
+  if(!logs || logs.length === 0){
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No detection logs yet</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = logs.map(log => {
+    const badgeClass = log.mask_detected ? 'mask' : 'no-mask';
+    const badgeText  = log.mask_detected ? 'Mask' : 'No Mask';
+    const thumb = log.image_url
+      ? `<img class="thumb" src="${log.image_url}" alt="snapshot">`
+      : `<div class="thumb-placeholder"></div>`;
+
+    return `
+      <tr>
+        <td>${thumb}</td>
+        <td><span class="badge ${badgeClass}"><span class="dot"></span>${badgeText}</span></td>
+        <td class="mono">${(log.confidence * 100).toFixed(1)}%</td>
+        <td class="mono">${log.timestamp}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
+
+// ── Manage modal ───────────────────────────────────────
+manageBtn.addEventListener('click', () => {
+  manageModal.classList.add('open');
+  loadModalList();
+});
+
+modalCloseBtn.addEventListener('click', closeModal);
+manageModal.addEventListener('click', (e) => {
+  if(e.target === manageModal) closeModal();
+});
+
+function closeModal(){
+  manageModal.classList.remove('open');
+}
+
+async function loadModalList(){
+  modalList.innerHTML = '<div class="modal-empty">Loading…</div>';
+  selectAllCheckbox.checked = false;
+  deleteSelectedBtn.disabled = true;
+
+  try{
+    const res = await fetch('/api/logs/');
+    const data = await res.json();
+    allLogsCache = data.logs || [];
+    renderModalList(allLogsCache);
+  }catch(err){
+    modalList.innerHTML = '<div class="modal-empty">Failed to load records</div>';
+  }
+}
+
+function renderModalList(logs){
+  if(!logs || logs.length === 0){
+    modalList.innerHTML = '<div class="modal-empty">No detection logs yet</div>';
+    return;
+  }
+
+  modalList.innerHTML = logs.map(log => {
+    const statusClass = log.mask_detected ? 'mask' : 'no-mask';
+    const statusLabel  = log.mask_detected ? 'Mask' : 'No Mask';
+    const thumb = log.image_url
+      ? `<img class="row-thumb" src="${log.image_url}" alt="snapshot">`
+      : `<div class="row-thumb" style="background:var(--panel-2)"></div>`;
+
+    return `
+      <label class="modal-row">
+        <input type="checkbox" class="row-checkbox" data-id="${log.id}">
+        ${thumb}
+        <div class="row-meta">
+          <span class="row-status ${statusClass}">${statusLabel}</span>
+          <span>${(log.confidence * 100).toFixed(1)}% &middot; ${log.timestamp}</span>
+        </div>
+      </label>
+    `;
+  }).join('');
+
+  document.querySelectorAll('.row-checkbox').forEach(cb => {
+    cb.addEventListener('change', updateDeleteButtonState);
+  });
+}
+
+function updateDeleteButtonState(){
+  const anyChecked = document.querySelectorAll('.row-checkbox:checked').length > 0;
+  deleteSelectedBtn.disabled = !anyChecked;
+
+  const allBoxes = document.querySelectorAll('.row-checkbox');
+  const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+  selectAllCheckbox.checked = allBoxes.length > 0 && allBoxes.length === checkedBoxes.length;
+}
+
+selectAllCheckbox.addEventListener('change', () => {
+  document.querySelectorAll('.row-checkbox').forEach(cb => {
+    cb.checked = selectAllCheckbox.checked;
+  });
+  updateDeleteButtonState();
+});
+
+deleteSelectedBtn.addEventListener('click', async () => {
+  const ids = Array.from(document.querySelectorAll('.row-checkbox:checked'))
+    .map(cb => parseInt(cb.dataset.id, 10));
+
+  if(ids.length === 0) return;
+  if(!confirm(`Delete ${ids.length} selected record(s)? This cannot be undone.`)) return;
+
+  deleteSelectedBtn.disabled = true;
+  deleteSelectedBtn.textContent = 'Deleting…';
+
+  try{
+    await fetch('/api/delete/', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    await loadModalList();
+    loadDashboard();
+  }catch(err){
+    alert('Failed to delete records: ' + err.message);
+  }finally{
+    deleteSelectedBtn.textContent = 'Delete selected';
+  }
+});
+
+exportBtn.addEventListener('click', () => {
+  window.location.href = '/api/export/';
+});
+
+// initial load
+loadDashboard();
+</script>
+</body>
+</html>
