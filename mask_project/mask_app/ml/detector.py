@@ -14,6 +14,48 @@ CAFFEMODEL_PATH = os.path.join(BASE_DIR, "face_detector", "res10_300x300_ssd_ite
 # ── device ───────────────────────────────────────────────────────────────────
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+# ── global models (lazy loaded) ──────────────────────────────────────────
+mask_model = None
+face_net = None
+
+def load_models():
+    """
+    Load models only when needed.
+    Prevents Django startup memory issues.
+    """
+    global mask_model, face_net
+
+    if mask_model is None:
+        print("Loading mask detection model...")
+
+        mask_model = models.mobilenet_v2(weights=None)
+        mask_model.classifier[1] = torch.nn.Linear(
+            mask_model.last_channel,
+            2
+        )
+
+        mask_model.load_state_dict(
+            torch.load(
+                MODEL_PATH,
+                map_location=device
+            )
+        )
+
+        mask_model.to(device)
+        mask_model.eval()
+
+        print("Mask model loaded successfully.")
+
+    if face_net is None:
+        print("Loading face detector...")
+
+        face_net = cv2.dnn.readNet(
+            PROTOTXT_PATH,
+            CAFFEMODEL_PATH
+        )
+
+        print("Face detector loaded successfully.")
 # ── load mask classifier once at startup ─────────────────────────────────────
 mask_model = models.mobilenet_v2(weights=None)
 mask_model.classifier[1] = torch.nn.Linear(mask_model.last_channel, 2)
@@ -48,6 +90,9 @@ def detect_from_frame(frame):
         ]
     Returns an empty list if no face is found.
     """
+        # Lazy load models
+    load_models()
+
     (h, w) = frame.shape[:2]
 
     blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300),
