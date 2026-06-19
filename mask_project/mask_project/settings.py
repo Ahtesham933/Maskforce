@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-4%a$*ynew#!p^e(w=zt71^a@s)c_azvn+13ufb_qc1@wc08iv9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*", ".vercel.app"]
 
 
 # Application definition
@@ -76,14 +76,14 @@ WSGI_APPLICATION = 'mask_project.wsgi.application'
 
 DATABASES = {
     'default': {
-        # 'ENGINE': 'django.db.backends.sqlite3',
-        # 'NAME': BASE_DIR / 'db.sqlite3',
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'mask_db',
-        'USER': 'root',
-        'PASSWORD': 'Ahaan123',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+        # 'ENGINE': 'django.db.backends.mysql',
+        # 'NAME': 'mask_db',
+        # 'USER': 'root',
+        # 'PASSWORD': 'Ahaan123',
+        # 'HOST': 'localhost',
+        # 'PORT': '3306',
     }
 }
 
